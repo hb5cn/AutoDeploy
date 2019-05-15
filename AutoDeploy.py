@@ -56,7 +56,13 @@ class AutoDeploy(object):
         :return:
         """
         # config路径。
-        config_path = os.path.join(self.home_dir, config_file)
+        if config_file in os.listdir(self.home_dir):
+            config_path = os.path.join(self.home_dir, config_file)
+        elif os.path.exists(config_file):
+            config_path = config_file
+        else:
+            self.mainlog.error('Can\'t find %s' % config_file)
+            return 'error Can\'t find config_file'
 
         # 获取config文件原始内容。
         assert os.path.exists(config_path), '{0} is not exists.'.format(config_path)
@@ -187,10 +193,10 @@ class AutoDeploy(object):
         fp.write(newcontent)
         fp.close()
 
-    # def main(self):
+        return 'Change done.'
 
-        # AutoDeployServer()
-        # self.changeconfig()
+    # def main(self):
+        # self.changeconfig(config_file, )
         # self.changeconfig('config_auto_update_v1.9.1.cfg', 'api',
         #                   'svn://123.57.180.25/dailyproduct/boss/20190514111130',
         #                   '/opt/tomcat227_8083/webapps/', '/opt/tomcat227_8083/webapps/', '',
@@ -201,25 +207,50 @@ class AutoDeploy(object):
         #                   'no', 'no', 'no')
 
 
-@app.route('/', methods=['GET', 'POST'])
-def get_parameters():
-    parameter_log = AutoDeploy().mainlog
+@app.route('/configparameters', methods=['GET', 'POST'])
+def changeconfig_parameters():
+    deploy = AutoDeploy()
+    parameter_log = deploy.mainlog
 
     config_file = flask.request.values.get('config_file')
-    parameter_log.info('config_file is : ', config_file)
+    parameter_log.info('config_file is : {:s}'.format(config_file))
 
     product_name = flask.request.values.get('product_name')
-    parameter_log.info('product_name is : ', product_name)
+    parameter_log.info('product_name is : {:s}'.format(product_name))
 
     svn_path = flask.request.values.get('svn_path')
-    parameter_log.info('svn_path is : ', svn_path)
+    parameter_log.info('svn_path is : {:s}'.format(svn_path))
 
     boss_path = flask.request.values.get('boss_path')
-    parameter_log.info('boss_path is : ', boss_path)
+    parameter_log.info('boss_path is : {:s}'.format(boss_path))
 
-    boss_path = flask.request.values.get('boss_path')
-    parameter_log.info('boss_path is : ', boss_path)
-    return 'Success'
+    billing_path = flask.request.values.get('billing_path')
+    parameter_log.info('billing_path is : {:s}'.format(billing_path))
+
+    other_path = flask.request.values.get('other_path')
+    parameter_log.info('other_path is : {:s}'.format(other_path))
+
+    boss_config = flask.request.values.get('boss_config')
+    parameter_log.info('boss_config is : {:s}'.format(boss_config))
+
+    billing_config = flask.request.values.get('billing_config')
+    parameter_log.info('billing_config is : {:s}'.format(billing_config))
+
+    other_config = flask.request.values.get('other_config')
+    parameter_log.info('other_config is : {:s}'.format(other_config))
+
+    boss_changed = flask.request.values.get('boss_changed')
+    parameter_log.info('boss_changed is : {:s}'.format(boss_changed))
+
+    billing_changed = flask.request.values.get('billing_changed')
+    parameter_log.info('billing_changed is : {:s}'.format(billing_changed))
+
+    other_changed = flask.request.values.get('other_changed')
+    parameter_log.info('other_changed is : {:s}'.format(other_changed))
+
+    result = deploy.changeconfig(config_file, product_name, svn_path, boss_path, billing_path, other_path, boss_config,
+                                 billing_config, other_config, boss_changed, billing_changed, other_changed)
+    return result
 
 
 app.run(port=40000)
