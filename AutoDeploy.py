@@ -2,11 +2,11 @@
 # -*- coding: UTF-8 -*-
 
 import os
-import sys
 import time
 import flask
 import logging
-import traceback
+import threading
+import subprocess
 
 app = flask.Flask(__name__)
 
@@ -72,6 +72,7 @@ class AutoDeploy(object):
         newcontent = ''
 
         for content in config_content:
+            content = str(content)
             if content.find('#') >= 0:
                 newcontent += content
                 continue
@@ -189,29 +190,48 @@ class AutoDeploy(object):
             newcontent += content
 
         # 将替换后的全部内容写入原文件
-        fp = open(config_path, 'w', encoding='utf-8')
-        fp.write(newcontent)
+        fp = open(config_path, 'rb+')
+        fp.write(newcontent.encode('utf-8'))
         fp.close()
 
         return 'Change done.'
 
     # def main(self):
-        # self.changeconfig(config_file, )
-        # self.changeconfig('config_auto_update_v1.9.1.cfg', 'api',
-        #                   'svn://123.57.180.25/dailyproduct/boss/20190514111130',
-        #                   '/opt/tomcat227_8083/webapps/', '/opt/tomcat227_8083/webapps/', '',
-        #                   'svn://svn.uincall.com:3695/project/04_测试/99 部门管理/01 文档管理/10 自动化项目/'
-        #                   '05 测试环境配置文件备份/101.200.111.227/227-8083/227-8083-bossautodeploy-xtboss-classes',
-        #                   'svn://svn.uincall.com:3695/project/04_测试/99 部门管理/01 文档管理/10 自动化项目/'
-        #                   '05 测试环境配置文件备份/101.200.111.227/227-8083/227-8083-bossautodeploy-xtbilling-classes', '',
-        #                   'no', 'no', 'no')
+    def callautoupdate(self, updatefile, tomcatpath):
+        self.cleantomcatlog(tomcatpath)
+        # 创建shell执行语句。
+        cmd = '/bin/bash {:s} 2'.format(updatefile)
+        self.mainlog.info('Begin update')
+        self.mainlog.info('bash is : %s' % cmd)
+
+        # 开始执行更新版本。
+        update = subprocess.Popen(cmd.encode('gbk'), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+        while True:
+            nextline = update.stdout.readline().decode(encoding='utf-8')
+            self.mainlog.info(nextline.strip())
+            if nextline == "" and update.poll() is not None:
+                break
+
+    def cleantomcatlog(self, tomcatpath):
+        log_path = os.path.join(tomcatpath, 'logs')
+        # 将logs下的文件列出来。
+        logfile_list = os.listdir(log_path)
+        if 'catalina.out' in logfile_list:
+            # 找到catalina.out说明是tomcat的日志目录，进行清空。
+            self.mainlog.info('Remove logs file.')
+            rm_cmd = 'rm -f {}/*'.format(log_path)
+            os.system(rm_cmd)
+        else:
+            # 没找到catalina.out说明给出的tomcat路径是错误的，或者tomcat里不是默认布局。
+            raise Exception('The logs floder is not in ', tomcatpath)
+
+
+deploy = AutoDeploy()
+parameter_log = deploy.mainlog
 
 
 @app.route('/configparameters', methods=['GET', 'POST'])
 def changeconfig_parameters():
-    deploy = AutoDeploy()
-    parameter_log = deploy.mainlog
-
     config_file = flask.request.values.get('config_file')
     parameter_log.info('config_file is : {:s}'.format(config_file))
 
@@ -253,7 +273,16 @@ def changeconfig_parameters():
     return result
 
 
-app.run(port=40000)
+@app.route('/runupdate', methods=['GET', 'POST'])
+def runautoupdate():
+    updatefile = flask.request.values.get('updatefile')
+    parameter_log.info('updatefile is : {:s}'.format(updatefile))
+    upthread = threading.Thread(target=deploy.callautoupdate, args=(updatefile, ))
+    upthread.start()
+    return 'Begin update'
+
+
+app.run(host='0.0.0.0', port=40000)
 
 if __name__ == '__main__':
     # a = AutoDeploy()
@@ -265,5 +294,3 @@ if __name__ == '__main__':
     #                '101.200.111.227/227-8083/227-8083-bossautodeploy-xtbilling-classes', '', 'no', 'no', 'no')
     # a.main()
     pass
-
-
