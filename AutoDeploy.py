@@ -2,7 +2,9 @@
 # -*- coding: UTF-8 -*-
 
 import os
+import re
 import time
+import copy
 import flask
 import logging
 import threading
@@ -196,11 +198,10 @@ class AutoDeploy(object):
 
         return 'Change done.'
 
-    # def main(self):
-    def callautoupdate(self, updatefile, tomcatpath):
+    def callautoupdate(self, updatefile, tomcatpath, project):
         self.cleantomcatlog(tomcatpath)
         # 创建shell执行语句。
-        cmd = '/bin/bash {:s} 2'.format(updatefile)
+        cmd = '/bin/bash {:s} 6'.format(updatefile)
         self.mainlog.info('Begin update')
         self.mainlog.info('bash is : %s' % cmd)
 
@@ -209,21 +210,78 @@ class AutoDeploy(object):
         while True:
             nextline = update.stdout.readline().decode(encoding='utf-8')
             self.mainlog.info(nextline.strip())
-            if nextline == "" and update.poll() is not None:
+            if update.poll() == 0:
                 break
+
+        # 开始查日志判断是否正常启动。
+        catalinalogpath = os.path.join(tomcatpath, 'logs/catalina.out')
+        self.judgebossrun(catalinalogpath, project)
 
     def cleantomcatlog(self, tomcatpath):
         log_path = os.path.join(tomcatpath, 'logs')
+        assert os.path.exists(log_path)
         # 将logs下的文件列出来。
         logfile_list = os.listdir(log_path)
         if 'catalina.out' in logfile_list:
             # 找到catalina.out说明是tomcat的日志目录，进行清空。
             self.mainlog.info('Remove logs file.')
             rm_cmd = 'rm -f {}/*'.format(log_path)
+            self.mainlog.info('bash is : %s' % rm_cmd)
             os.system(rm_cmd)
+        elif len(logfile_list).__eq__(0):
+            # 如果目录是空的，说明已经清理过了。
+            pass
         else:
             # 没找到catalina.out说明给出的tomcat路径是错误的，或者tomcat里不是默认布局。
             raise Exception('The logs floder is not in ', tomcatpath)
+
+    def judgebossrun(self, catalinalogpath, project):
+        self.mainlog.info('Begin judge boss is run')
+        project = list(project)
+        num_list = len(project)
+        new_project = copy.copy(project)
+        while True:
+            # 判断正常启动
+            fp_catalina = open(catalinalogpath, encoding='utf-8')
+            fp_catalina_content = fp_catalina.read()
+            for i in range(0, num_list):
+                re_return = self.refinished(fp_catalina_content, project)
+                if 'project all finished' == str(re_return):
+                    self.mainlog.info('project all finished')
+                    return
+                else:
+                    self.mainlog.info(re_return)
+
+                a = new_project[0]
+                for j in range(0, num_list - 1):
+                    new_project[j] = new_project[j + 1]
+                new_project[-1] = a
+                project = copy.copy(new_project)
+            fp_catalina.close()
+            time.sleep(5)
+
+    def refinished(self, fp_catalina_content, projrct):
+        """
+        递归判断各个项目有没有正确结束。
+        :param fp_catalina_content:F:/PythonTest/AutoDeployWithJenkins(Uincall)/catalina.out
+        :param projrct:'xtbilling', 'xtboss'
+        :return:project all finished
+        """
+        re_str = r'{}.*has finished.*ms'.format(projrct[0])
+        re_result = re.search(re_str, fp_catalina_content)
+        if re_result:
+            log_str = '{} is in the {}'.format(projrct[0], re_result.span())
+            self.mainlog.info(log_str)
+            del projrct[0]
+            if len(projrct).__eq__(0):
+                return 'project all finished'
+            else:
+                return_str = self.refinished(fp_catalina_content, projrct)
+                if return_str:
+                    return return_str
+        else:
+            result_str = 'can\'t find {} finished'.format(projrct[0])
+            return result_str
 
 
 deploy = AutoDeploy()
@@ -277,15 +335,26 @@ def changeconfig_parameters():
 def runautoupdate():
     updatefile = flask.request.values.get('updatefile')
     parameter_log.info('updatefile is : {:s}'.format(updatefile))
-    upthread = threading.Thread(target=deploy.callautoupdate, args=(updatefile, ))
+    tomcatpath = flask.request.values.get('tomcatpath')
+    parameter_log.info('tomcatpath is : {:s}'.format(tomcatpath))
+    project = str(flask.request.values.get('project')).split(',')
+    parameter_log.info('project is : {}'.format(project))
+    upthread = threading.Thread(target=deploy.callautoupdate, args=(updatefile, tomcatpath, project,))
     upthread.start()
     return 'Begin update'
+
+
+@app.route('/test', methods=['GET', 'POST'])
+def test():
+    deploy.judgebossrun('F:/PythonTest/AutoDeployWithJenkins(Uincall)/catalina.out', ['xtbilling', 'xtboss'])
+    return '2222'
 
 
 app.run(host='0.0.0.0', port=40000)
 
 if __name__ == '__main__':
     # a = AutoDeploy()
+    # a.judgetomcatrun('F:/PythonTest/AutoDeployWithJenkins(Uincall)/catalina.out')
     # a.changeconfig('config_auto_update_v1.9.1.cfg', 'api', 'svn://123.57.180.25/dailyproduct/boss/20190514111130',
     #                '/opt/tomcat227_8083/webapps/', '/opt/tomcat227_8083/webapps/', '',
     #                'svn://svn.uincall.com:3695/project/04_测试/99 部门管理/01 文档管理/10 自动化项目/05 测试环境配置文件备份/'
