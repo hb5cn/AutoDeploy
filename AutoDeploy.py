@@ -6,11 +6,17 @@ import re
 import time
 import copy
 import flask
-from urllib.parse import quote
+import smtplib
 import urllib3
 import logging
+import traceback
 import threading
 import subprocess
+from urllib.parse import quote
+from xml.etree import ElementTree
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 
 app = flask.Flask(__name__)
 
@@ -213,6 +219,10 @@ class AutoDeploy(object):
         while True:
             nextline = update.stdout.readline().decode(encoding='utf-8')
             self.mainlog.info(nextline.strip())
+            self.mainlog.info('-------->' + str(nextline.strip()) + '<-------')
+            self.mainlog.info('--------<' + str(type(nextline.strip())) + '>-------')
+            self.mainlog.info('++++++++' + str(update.poll()) + '++++++++')
+            self.mainlog.info('++++++++--' + str(type(update.poll())) + '---++++++++')
             if update.poll() == 0:
                 break
 
@@ -221,6 +231,11 @@ class AutoDeploy(object):
         boss_result = self.judgebossrun(catalinalogpath, project)
 
         if 'error' == str(boss_result):
+            # 如果启动失败，则给admin用户发送邮件。
+            catalinalog_path = os.path.join(tomcatpath, 'logs/catalina.out')
+            fp_catalina = open(catalinalog_path, encoding='utf-8')
+            self.mainlog.info('Begin Send tomcat startup error email.')
+            self.sendemail('admin', fp_catalina.read(), 'Tomcat启动失败', catalinalog_path)
             return 'error'
 
         # 开始回调jenkins，执行自动化脚本。
@@ -228,6 +243,8 @@ class AutoDeploy(object):
             self.mainlog.info('Begin Call Jenkins Run RF.')
             self.mainlog.info('Jenkins Url is : %s' % str(jenkinsurl))
             http.request('GET', jenkinsurl)
+
+        return boss_result
 
     def cleantomcatlog(self, tomcatpath):
         log_path = os.path.join(tomcatpath, 'logs')
@@ -272,7 +289,7 @@ class AutoDeploy(object):
 
             # 判断是不是已经出现Exception，表示已经结束但是项目启动有问题。
             re_str = r'Exception|error'
-            re_result = re.search(re_str, fp_catalina_content)
+            re_result = re.search(re_str, str(fp_catalina_content))
             if re_result:
                 self.mainlog.error('Tomcat Start Fail.')
                 return 'error'
@@ -304,6 +321,43 @@ class AutoDeploy(object):
         else:
             result_str = 'can\'t find {} finished'.format(projrct[0])
             return result_str
+
+    def sendemail(self, mail_type, mail_text, subject, enclosure=''):
+        # 读取emailname配置文件。
+        emailroot = ElementTree.parse('emailname.xml')
+        # 获取收件人列表。
+        mailto_name = emailroot.find('./{}'.format(mail_type))
+        mailto_admin = emailroot.find('./admin')
+        mailto_list = []
+        for i in range(0, len(mailto_name)):
+            mailto_list.append(mailto_name[i].text)
+        if 'admin' is not mail_type:
+            for i in range(0, len(mailto_admin)):
+                mailto_list.append(mailto_admin[i].text)
+        # 获取邮件认证相关信息。
+        mail_host = emailroot.find('mailserver').text
+        mail_user = emailroot.find('sendaccount').text
+        mail_pass = emailroot.find('sendpassword').text
+        me = '<' + mail_user + '>'
+        msg = MIMEMultipart()
+        msg.attach(MIMEText(mail_text, _subtype='plain', _charset='GBK'))
+        msg['Subject'] = subject
+        msg['From'] = me
+        msg['To'] = ';'.join(mailto_list)
+        if '' != enclosure:
+            part_attach = MIMEApplication(open(enclosure, 'rb').read())
+            part_attach.add_header('Content-Disposition', 'attachment', filename=os.path.basename(enclosure))
+            msg.attach(part_attach)
+        # 发送邮件。
+        # noinspection PyBroadException
+        try:
+            server = smtplib.SMTP()
+            server.connect(mail_host)
+            server.login(mail_user, mail_pass)
+            server.sendmail(me, mailto_list, msg.as_string())
+            server.close()
+        except Exception:
+            self.mainlog.error(traceback.format_exc())
 
 
 # MyThread.py线程类
@@ -392,19 +446,23 @@ def runautoupdate():
     if 'error' == upthread.get_result():
         flask.make_response().status_code = 500
         return 'Tomcat Start Fail'
-    return 'success'
+    elif 'success' == upthread.get_result():
+        return 'success'
+    else:
+        return 'error'
 
 
 @app.route('/test', methods=['GET', 'POST'])
 def test():
     # deploy.judgebossrun('F:/PythonTest/AutoDeployWithJenkins(Uincall)/catalina.out', ['xtbilling', 'xtboss'])
-    http = urllib3.PoolManager()
-    jenkinsurl = flask.request.values.get('jenkinsurl')
-    jenkinsurl = quote(jenkinsurl, safe=";/?:@&=+$,")
-    # url = 'http://10.10.16.61:9091/job/%E8%BF%90%E8%A1%8C%E8%87%AA%E5%8A%A8%E5%8C%96/build?token=runrf'
-    a = http.request('GET', jenkinsurl)
-    print(a.data.decode())
-    return '2222'
+    # http = urllib3.PoolManager()
+    # jenkinsurl = flask.request.values.get('jenkinsurl')
+    # jenkinsurl = quote(jenkinsurl, safe=";/?:@&=+$,")
+    # # url = 'http://10.10.16.61:9091/job/%E8%BF%90%E8%A1%8C%E8%87%AA%E5%8A%A8%E5%8C%96/build?token=runrf'
+    # a = http.request('GET', jenkinsurl)
+    # print(a.data.decode())
+    # return '2222'
+    pass
 
 
 app.run(host='0.0.0.0', port=40000)
