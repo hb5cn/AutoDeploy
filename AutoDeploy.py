@@ -6,6 +6,8 @@ import re
 import time
 import copy
 import flask
+from urllib.parse import quote
+import urllib3
 import logging
 import threading
 import subprocess
@@ -198,10 +200,11 @@ class AutoDeploy(object):
 
         return 'Change done.'
 
-    def callautoupdate(self, updatefile, tomcatpath, project):
+    def callautoupdate(self, updatefile, updatemode, tomcatpath, project, isnext, jenkinsurl):
         self.cleantomcatlog(tomcatpath)
+        http = urllib3.PoolManager()
         # 创建shell执行语句。
-        cmd = '/bin/bash {:s} 6'.format(updatefile)
+        cmd = '/bin/bash {:s} {:s}'.format(updatefile, updatemode)
         self.mainlog.info('Begin update')
         self.mainlog.info('bash is : %s' % cmd)
 
@@ -215,7 +218,16 @@ class AutoDeploy(object):
 
         # 开始查日志判断是否正常启动。
         catalinalogpath = os.path.join(tomcatpath, 'logs/catalina.out')
-        self.judgebossrun(catalinalogpath, project)
+        boss_result = self.judgebossrun(catalinalogpath, project)
+
+        if 'error' == str(boss_result):
+            return 'error'
+
+        # 开始回调jenkins，执行自动化脚本。
+        if 'true' == isnext:
+            self.mainlog.info('Begin Call Jenkins Run RF.')
+            self.mainlog.info('Jenkins Url is : %s' % str(jenkinsurl))
+            http.request('GET', jenkinsurl)
 
     def cleantomcatlog(self, tomcatpath):
         log_path = os.path.join(tomcatpath, 'logs')
@@ -241,22 +253,32 @@ class AutoDeploy(object):
         num_list = len(project)
         new_project = copy.copy(project)
         while True:
-            # 判断正常启动
+            log_status = ''
+            # 判断启动完成
             fp_catalina = open(catalinalogpath, encoding='utf-8')
             fp_catalina_content = fp_catalina.read()
             for i in range(0, num_list):
                 re_return = self.refinished(fp_catalina_content, project)
                 if 'project all finished' == str(re_return):
                     self.mainlog.info('project all finished')
-                    return
+                    log_status = 'done'
                 else:
                     self.mainlog.info(re_return)
-
                 a = new_project[0]
                 for j in range(0, num_list - 1):
                     new_project[j] = new_project[j + 1]
                 new_project[-1] = a
                 project = copy.copy(new_project)
+
+            # 判断是不是已经出现Exception，表示已经结束但是项目启动有问题。
+            re_str = r'Exception|error'
+            re_result = re.search(re_str, fp_catalina_content)
+            if re_result:
+                self.mainlog.error('Tomcat Start Fail.')
+                return 'error'
+            if 'done' == log_status:
+                self.mainlog.info('Tomcat Start Success.')
+                return 'success'
             fp_catalina.close()
             time.sleep(5)
 
@@ -282,6 +304,23 @@ class AutoDeploy(object):
         else:
             result_str = 'can\'t find {} finished'.format(projrct[0])
             return result_str
+
+
+# MyThread.py线程类
+class MyThread(threading.Thread):
+    def __init__(self, func, args=()):
+        super(MyThread, self).__init__()
+        self.result = ''
+        self.func = func
+        self.args = args
+
+    def run(self):
+        time.sleep(2)
+        self.result = self.func(*self.args)
+
+    def get_result(self):
+        threading.Thread.join(self)  # 等待线程执行完毕
+        return self.result
 
 
 deploy = AutoDeploy()
@@ -335,18 +374,36 @@ def changeconfig_parameters():
 def runautoupdate():
     updatefile = flask.request.values.get('updatefile')
     parameter_log.info('updatefile is : {:s}'.format(updatefile))
+    updatemode = flask.request.values.get('updatemode')
+    parameter_log.info('updatemode is : {:s}'.format(updatemode))
     tomcatpath = flask.request.values.get('tomcatpath')
     parameter_log.info('tomcatpath is : {:s}'.format(tomcatpath))
     project = str(flask.request.values.get('project')).split(',')
     parameter_log.info('project is : {}'.format(project))
-    upthread = threading.Thread(target=deploy.callautoupdate, args=(updatefile, tomcatpath, project,))
+    isnext = flask.request.values.get('isnext')
+    parameter_log.info('isnext is : {:s}'.format(isnext))
+    jenkinsurl = flask.request.values.get('jenkinsurl')
+    jenkinsurl = quote(jenkinsurl, safe=";/?:@&=+$,")
+    parameter_log.info('jenkinsurl is : {:s}'.format(jenkinsurl))
+
+    upthread = MyThread(deploy.callautoupdate, [updatefile, updatemode, tomcatpath, project, isnext, jenkinsurl])
     upthread.start()
-    return 'Begin update'
+    upthread.join()
+    if 'error' == upthread.get_result():
+        flask.make_response().status_code = 500
+        return 'Tomcat Start Fail'
+    return 'success'
 
 
 @app.route('/test', methods=['GET', 'POST'])
 def test():
-    deploy.judgebossrun('F:/PythonTest/AutoDeployWithJenkins(Uincall)/catalina.out', ['xtbilling', 'xtboss'])
+    # deploy.judgebossrun('F:/PythonTest/AutoDeployWithJenkins(Uincall)/catalina.out', ['xtbilling', 'xtboss'])
+    http = urllib3.PoolManager()
+    jenkinsurl = flask.request.values.get('jenkinsurl')
+    jenkinsurl = quote(jenkinsurl, safe=";/?:@&=+$,")
+    # url = 'http://10.10.16.61:9091/job/%E8%BF%90%E8%A1%8C%E8%87%AA%E5%8A%A8%E5%8C%96/build?token=runrf'
+    a = http.request('GET', jenkinsurl)
+    print(a.data.decode())
     return '2222'
 
 
