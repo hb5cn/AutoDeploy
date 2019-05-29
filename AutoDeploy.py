@@ -249,6 +249,9 @@ class AutoDeploy(object):
             self.mainlog.info('Jenkins Url is : %s' % str(jenkinsurl))
             http.request('GET', jenkinsurl)
 
+        # 开始删除自动升级工具文件夹里旧的文件夹。
+        self.cleanupautoupfloder(updatefile)
+
         return boss_result
 
     def cleantomcatlog(self, tomcatpath):
@@ -372,7 +375,6 @@ class AutoDeploy(object):
         floder_list = os.listdir(updatefloder)
         originalctime = 0
         originalfilepath = ''
-        print(floder_list)
         # 从列表中排除auto_update_v1.9.3.sh和config_auto_update_v1.9.1.cfg、nohup.out三个文件。
         for file in floder_list:
             if str(file).find('config_auto_update') >= 0:
@@ -384,6 +386,7 @@ class AutoDeploy(object):
             elif str(file).find('nohup.out') >= 0:
                 os.remove(os.path.join(updatefloder, file))
             else:
+                self.mainlog.info('Remove old floder.')
                 # 判断文件的创建时间，仅保留最近的文件夹，其余的删除。
                 floder_path = os.path.join(updatefloder, file)
                 floder_ctime = os.path.getctime(floder_path)
@@ -395,15 +398,16 @@ class AutoDeploy(object):
                         shutil.rmtree(floder_path)
                     except NotADirectoryError:
                         os.remove(floder_path)
+                    self.mainlog.info('Remove : %s' % floder_path)
                 else:
                     try:
                         shutil.rmtree(originalfilepath)
                     except NotADirectoryError:
-                        os.remove(floder_path)
+                        os.remove(originalfilepath)
                     originalctime = floder_ctime
                     originalfilepath = floder_path
-
-        print(floder_dirct)
+                    self.mainlog.info('Remove : %s' % originalfilepath)
+        self.mainlog.info('Remove done.')
 
 
 # MyThread.py线程类
