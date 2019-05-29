@@ -6,6 +6,7 @@ import re
 import time
 import copy
 import flask
+import shutil
 import smtplib
 import urllib3
 import logging
@@ -363,6 +364,47 @@ class AutoDeploy(object):
         except Exception:
             self.mainlog.error(traceback.format_exc())
 
+    def cleanupautoupfloder(self, updatefile):
+        self.mainlog.info('List auto update floder.')
+        floder_dirct = {}
+        updatefloder = os.path.dirname(updatefile)
+        # 获取自动升级文件夹里的文件夹列表。
+        floder_list = os.listdir(updatefloder)
+        originalctime = 0
+        originalfilepath = ''
+        print(floder_list)
+        # 从列表中排除auto_update_v1.9.3.sh和config_auto_update_v1.9.1.cfg、nohup.out三个文件。
+        for file in floder_list:
+            if str(file).find('config_auto_update') >= 0:
+                floder_list.remove(file)
+            elif str(file).find('auto_update') >= 0:
+                floder_list.remove(file)
+            elif str(file).find('svn') >= 0:
+                floder_list.remove(file)
+            elif str(file).find('nohup.out') >= 0:
+                os.remove(os.path.join(updatefloder, file))
+            else:
+                # 判断文件的创建时间，仅保留最近的文件夹，其余的删除。
+                floder_path = os.path.join(updatefloder, file)
+                floder_ctime = os.path.getctime(floder_path)
+                if 0 == originalctime:
+                    originalctime = floder_ctime
+                    originalfilepath = floder_path
+                elif floder_ctime >= originalctime:
+                    try:
+                        shutil.rmtree(floder_path)
+                    except NotADirectoryError:
+                        os.remove(floder_path)
+                else:
+                    try:
+                        shutil.rmtree(originalfilepath)
+                    except NotADirectoryError:
+                        os.remove(floder_path)
+                    originalctime = floder_ctime
+                    originalfilepath = floder_path
+
+        print(floder_dirct)
+
 
 # MyThread.py线程类
 class MyThread(threading.Thread):
@@ -466,7 +508,7 @@ def test():
     # a = http.request('GET', jenkinsurl)
     # print(a.data.decode())
     # return '2222'
-    parameter_log.info('123213123')
+    deploy.cleanupautoupfloder(r'F:\PythonTest\AutoDeployWithJenkins(Uincall)\auto_update_boss\auto_update_v1.9.3.sh')
     return '11111'
 
 
