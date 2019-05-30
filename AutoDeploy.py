@@ -12,6 +12,7 @@ import logging
 import traceback
 import threading
 import subprocess
+import logging.handlers
 from urllib.parse import quote
 from xml.etree import ElementTree
 from email.mime.text import MIMEText
@@ -26,22 +27,25 @@ class AutoDeploy(object):
         self.home_dir = os.path.split(os.path.realpath(__file__))[0]
 
         # 初始化日志模块
-        self.logging = logging
-        # 定义工程的初始路径
-
+        self.mainlog = logging.getLogger()
+        self.mainlog.setLevel(logging.INFO)
         # 定义日志文件输入的路径及文件名
-        logfile = '{:s}/LOG/AutoTestLog{:s}.log'.format(self.home_dir, time.strftime('%Y%m%d%H%M%S',
-                                                                                     time.localtime(time.time())))
-        self.logging.basicConfig(filename=logfile, level=self.logging.INFO,
-                                 format='%(asctime)s %(funcName)s %(lineno)d %(levelname)s %(message)s',
-                                 datefmt='%Y-%m-%d-%a %H:%M:%S', filemode='w')
+        logfile = '{:s}/LOG/AutoTestLog.log'.format(self.home_dir)
+        if os.path.exists(logfile):
+            os.remove(logfile)
+
+        # 设置一个本地打印的句柄
+        formatter = logging.Formatter('%(asctime)s %(funcName)s %(lineno)d %(levelname)s  %(message)s')
+
+        log_file_handler = logging.handlers.TimedRotatingFileHandler(filename=logfile, when="MIDNIGHT", interval=1,
+                                                                     backupCount=30)
+        log_file_handler.suffix = "%Y-%m-%d.log"
+        log_file_handler.setFormatter(formatter)
+        self.mainlog.addHandler(log_file_handler)
         # 设置一个屏幕打印的句柄
-        formatter = self.logging.Formatter('%(asctime)s %(funcName)s %(lineno)d %(levelname)s  %(message)s')
-        setlevel = self.logging.INFO
-        self.logscr = self.logging.StreamHandler()
-        self.logscr.setLevel(setlevel)
+        self.logscr = logging.StreamHandler()
+        self.logscr.setLevel(logging.INFO)
         self.logscr.setFormatter(formatter)
-        self.mainlog = self.logging.getLogger('LOG')
         self.mainlog.addHandler(self.logscr)
 
     def changeconfig(self, config_file, product_name, svn_path, boss_path, billing_path, other_path, boss_config,
@@ -462,7 +466,8 @@ def test():
     # a = http.request('GET', jenkinsurl)
     # print(a.data.decode())
     # return '2222'
-    pass
+    parameter_log.info('123213123')
+    return '11111'
 
 
 app.run(host='0.0.0.0', port=40000)
