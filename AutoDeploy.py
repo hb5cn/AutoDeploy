@@ -26,6 +26,7 @@ app = flask.Flask(__name__)
 class AutoDeploy(object):
     def __init__(self):
         self.home_dir = os.path.split(os.path.realpath(__file__))[0]
+        os.chdir(self.home_dir)
 
         # 初始化日志模块
         self.mainlog = logging.getLogger()
@@ -215,20 +216,24 @@ class AutoDeploy(object):
         self.cleantomcatlog(tomcatpath)
         http = urllib3.PoolManager()
         # 创建shell执行语句。
-        cmd = '/bin/bash {:s} {:s}'.format(updatefile, updatemode)
+        cmd = '{:s} {:s}'.format(updatefile, updatemode)
         self.mainlog.info('Begin update')
         self.mainlog.info('bash is : %s' % cmd)
 
         # 开始执行更新版本。
         update = subprocess.Popen(cmd.encode('gbk'), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+        self.mainlog.info('Sub process pid is : %s' % str(update.pid))
         while True:
             nextline = update.stdout.readline().decode(encoding='utf-8')
             self.mainlog.info(nextline.strip())
-            self.mainlog.info('-------->' + str(nextline.strip()) + '<-------')
-            self.mainlog.info('--------<' + str(type(nextline.strip())) + '>-------')
-            self.mainlog.info('++++++++' + str(update.poll()) + '++++++++')
-            self.mainlog.info('++++++++--' + str(type(update.poll())) + '---++++++++')
-            if update.poll() == 0:
+            if update.poll() == 0 and nextline.strip() == '':
+                # noinspection PyBroadException
+                try:
+                    self.mainlog.info('Kill sub process')
+                    time.sleep(3)
+                    os.system('/bin/bash killsh.sh %s' % updatefile)
+                except Exception:
+                    self.mainlog.error(traceback.format_exc())
                 break
 
         # 开始查日志判断是否正常启动。
@@ -369,7 +374,6 @@ class AutoDeploy(object):
 
     def cleanupautoupfloder(self, updatefile):
         self.mainlog.info('List auto update floder.')
-        floder_dirct = {}
         updatefloder = os.path.dirname(updatefile)
         # 获取自动升级文件夹里的文件夹列表。
         floder_list = os.listdir(updatefloder)
@@ -504,7 +508,7 @@ def runautoupdate():
 
 @app.route('/test', methods=['GET', 'POST'])
 def test():
-    # deploy.judgebossrun('F:/PythonTest/AutoDeployWithJenkins(Uincall)/catalina.out', ['xtbilling', 'xtboss'])
+    deploy.judgebossrun('F:/PythonTest/AutoDeployWithJenkins(Uincall)/catalina.out', ['xtbilling', 'xtboss'])
     # http = urllib3.PoolManager()
     # jenkinsurl = flask.request.values.get('jenkinsurl')
     # jenkinsurl = quote(jenkinsurl, safe=";/?:@&=+$,")
@@ -512,7 +516,7 @@ def test():
     # a = http.request('GET', jenkinsurl)
     # print(a.data.decode())
     # return '2222'
-    deploy.cleanupautoupfloder(r'F:\PythonTest\AutoDeployWithJenkins(Uincall)\auto_update_boss\auto_update_v1.9.3.sh')
+    # deploy.cleanupautoupfloder(r'F:\PythonTest\AutoDeployWithJenkins(Uincall)\auto_update_boss\auto_update_v1.9.3.sh')
     return '11111'
 
 
