@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 定义工程属性default是默认要做的事情，basedir是工作根目录 -->
+<project name="AntBilling" default="compile">
+
+    <target name="init">
+        <!-- 读取配置文件 -->
+        <echo message="读取配置文件"/>
+        <property file="xtbillingconfig.properties"/>
+
+        <!-- 设置classpath -->
+        <echo message="设置classpath"/>
+        <echo message="classpath是：${distpath}/WEB-INF/lib"/>
+        <path id="compile.classpath">
+            <fileset dir="${distpath}/WEB-INF/lib">
+                <include name="*.jar"/>
+            </fileset>
+            <fileset dir="${tomcatpath}/lib">
+                <include name="*.jar"/>
+            </fileset>
+        </path>
+
+        <!-- 如果WebRoot/WEB-INF/classes目录存在就删掉 -->
+        <echo message="判断${distpath}/WEB-INF/classes目录是否存在"/>
+        <available file="${distpath}/WEB-INF/classes" type="dir" property="classes_exist"/>
+        <antcall target="delete_classes"></antcall>
+
+        <!-- 创建classes文件夹 -->
+        <echo message="创建classes文件夹"/>
+        <mkdir dir="${distpath}/WEB-INF/classes"/>
+
+        <!-- 拷贝源码文件夹到classes目录 -->
+        <echo message="拷贝classes文件夹"/>
+        <copy todir="${distpath}/WEB-INF/classes">
+            <fileset dir="${srcpath}"/>
+        </copy>
+
+        <!-- 删除java文件 -->
+        <echo message="删除java文件"/>
+        <delete>
+            <fileset dir="${distpath}/WEB-INF/classes" includes="**/*.java"/>
+        </delete>
+    </target>
+
+    <target name="delete_classes" if="classes_exist">
+        <!-- 删除classes文件夹 -->
+        <echo message="清理${distpath}/WEB-INF/classes目录"/>
+        <delete dir="${distpath}/WEB-INF/classes"/>
+    </target>
+
+    <target name="cleansvn">
+        <!-- 删除目录下的.svn文件 -->
+        <echo message="删除.svn文件"/>
+        <delete defaultexcludes="false">
+            <fileset dir="${distpath}" includes="**/.svn"/>
+        </delete>
+    </target>
+
+    <target name="compile" depends="init" >
+        <!-- 编译源码 -->
+        <echo message="开始编译"/>
+        <javac srcdir="${srcpath}" source= "1.7" debug="yes" destdir="${distpath}/WEB-INF/classes">
+            <classpath refid="compile.classpath"/>
+            <compilerarg line="-encoding UTF-8 "/>
+            <compilerarg value="-XDignore.symbol.file"/>
+        </javac>
+    </target>
+
+</project>

@@ -1,0 +1,11 @@
+<config>
+    <compileboss>
+
+    </compileboss>
+    <admin>
+        <user1>zhangnan@union400.com</user1>
+    </admin>
+    <mailserver>smtp.exmail.qq.com</mailserver>
+    <sendaccount>zhangnan@union400.com</sendaccount>
+    <sendpassword>54DEr5ZXHBw85bCQ</sendpassword>
+</config>
