@@ -229,6 +229,7 @@ def compilebossandbilling():
         if os.path.exists(bossreleaseto):
             shutil.rmtree(bossreleaseto)
         app_log.info('Copy boss floder.')
+        # 将编译完成的boss整个release目录拷贝到tomcat中的xtboss目录。
         shutil.copytree(bossreleasesource, bossreleaseto)
     elif 'build fail' == bossthread.get_result():
         pass
@@ -238,6 +239,7 @@ def compilebossandbilling():
         if os.path.exists(billingreleaseto):
             shutil.rmtree(billingreleaseto)
         app_log.info('Copy billing floder.')
+        # 将编译完成的billing整个release目录拷贝到tomcat中的xtbilling目录。
         shutil.copytree(billingreleasesource, billingreleaseto)
     elif 'build fail' == billingthread.get_result():
         pass
