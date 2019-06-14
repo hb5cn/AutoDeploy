@@ -14,7 +14,7 @@ import traceback
 import threading
 import subprocess
 import logging.handlers
-from urllib.parse import quote
+# from urllib.parse import quote
 from xml.etree import ElementTree
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -223,10 +223,20 @@ class AutoDeploy(object):
         # 开始执行更新版本。
         update = subprocess.Popen(cmd.encode('gbk'), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
         self.mainlog.info('Sub process pid is : %s' % str(update.pid))
+        f_autoupdate = open('tmp_update.log', 'w')
+        f_update_cont = ''
         while True:
+            up_status = 0
             nextline = update.stdout.readline().decode(encoding='utf-8')
             self.mainlog.info(nextline.strip())
-            if update.poll() == 0 and nextline.strip() == '':
+            f_update_cont += nextline
+            # if update.poll() == 0 and nextline.strip() == '':
+            if nextline.strip().lower().find('has been successful') >= 0:
+                up_status = 1
+            elif nextline.strip().lower().find('sorry') >= 0:
+                up_status = 2
+            if up_status != 0:
+                self.mainlog.info('the exit code is : %s' % str(up_status))
                 # noinspection PyBroadException
                 try:
                     self.mainlog.info('Kill sub process')
@@ -235,6 +245,17 @@ class AutoDeploy(object):
                 except Exception:
                     self.mainlog.error(traceback.format_exc())
                 break
+
+        f_autoupdate.write(f_update_cont)
+        f_autoupdate.close()
+
+        if 1 == up_status:
+            os.remove('tmp_update.log')
+        elif 2 == up_status:
+            self.mainlog.info('Begin Send autoupdate tool error email.')
+            self.sendemail('admin', '升级工具升级失败，请参看附件', '升级工具升级失败', 'tmp_update.log')
+            os.remove('tmp_update.log')
+            return 'error'
 
         # 开始查日志判断是否正常启动。
         catalinalogpath = os.path.join(tomcatpath, 'logs/catalina.out')
@@ -437,61 +458,85 @@ parameter_log = deploy.mainlog
 
 @app.route('/configparameters', methods=['GET', 'POST'])
 def changeconfig_parameters():
-    config_file = flask.request.values.get('config_file')
+    config_data = flask.request.get_json()
+    config_file = config_data['config_file']
     parameter_log.info('config_file is : {:s}'.format(config_file))
 
-    product_name = flask.request.values.get('product_name')
+    product_name = config_data['product_name']
     parameter_log.info('product_name is : {:s}'.format(product_name))
 
-    svn_path = flask.request.values.get('svn_path')
+    svn_path = config_data['patchsvn_path']
     parameter_log.info('svn_path is : {:s}'.format(svn_path))
 
-    boss_path = flask.request.values.get('boss_path')
+    boss_path = config_data['install_path_xtboss']
     parameter_log.info('boss_path is : {:s}'.format(boss_path))
 
-    billing_path = flask.request.values.get('billing_path')
+    billing_path = config_data['install_path_xtbilling']
     parameter_log.info('billing_path is : {:s}'.format(billing_path))
 
-    other_path = flask.request.values.get('other_path')
+    other_path = config_data['install_path_other']
     parameter_log.info('other_path is : {:s}'.format(other_path))
 
-    boss_config = flask.request.values.get('boss_config')
+    boss_config = config_data['config_svnpath_xtboss']
     parameter_log.info('boss_config is : {:s}'.format(boss_config))
 
-    billing_config = flask.request.values.get('billing_config')
+    billing_config = config_data['config_svnpath_xtbilling']
     parameter_log.info('billing_config is : {:s}'.format(billing_config))
 
-    other_config = flask.request.values.get('other_config')
+    other_config = config_data['config_svnpath_other']
     parameter_log.info('other_config is : {:s}'.format(other_config))
 
-    boss_changed = flask.request.values.get('boss_changed')
+    boss_changed = config_data['config_changed_xtboss']
     parameter_log.info('boss_changed is : {:s}'.format(boss_changed))
 
-    billing_changed = flask.request.values.get('billing_changed')
+    billing_changed = config_data['config_changed_xtbilling']
     parameter_log.info('billing_changed is : {:s}'.format(billing_changed))
 
-    other_changed = flask.request.values.get('other_changed')
+    other_changed = config_data['config_changed_other']
     parameter_log.info('other_changed is : {:s}'.format(other_changed))
+
+    other_changed = config_data['config_changed_other']
+    parameter_log.info('other_changed is : {:s}'.format(other_changed))
+
+    jenkinsurl = config_data['jenkinsurl']
+    parameter_log.info('jenkinsurl is : {:s}'.format(jenkinsurl))
+
+    isupdate = config_data['isupdate']
+    parameter_log.info('isupdate is : {:s}'.format(isupdate))
 
     result = deploy.changeconfig(config_file, product_name, svn_path, boss_path, billing_path, other_path, boss_config,
                                  billing_config, other_config, boss_changed, billing_changed, other_changed)
+
+    # 开始回调jenkins，执行自动化脚本。
+    if '是' == isupdate:
+        parameter_log.info('Begin run autoupdate update tomcat.')
+        parameter_log.info('Jenkins Url is : %s' % str(jenkinsurl))
+        urllib3.PoolManager().request('GET', jenkinsurl)
+
     return result
 
 
 @app.route('/runupdate', methods=['GET', 'POST'])
 def runautoupdate():
-    updatefile = flask.request.values.get('updatefile')
+    update_data = flask.request.get_json()
+
+    updatefile = update_data['updatefile']
     parameter_log.info('updatefile is : {:s}'.format(updatefile))
-    updatemode = flask.request.values.get('updatemode')
+
+    updatemode = update_data['updatemode']
     parameter_log.info('updatemode is : {:s}'.format(updatemode))
-    tomcatpath = flask.request.values.get('tomcatpath')
+
+    tomcatpath = update_data['tomcatpath']
     parameter_log.info('tomcatpath is : {:s}'.format(tomcatpath))
-    project = str(flask.request.values.get('project')).split(',')
+
+    project = str(update_data['project']).split(',')
     parameter_log.info('project is : {}'.format(project))
-    isnext = flask.request.values.get('isnext')
+
+    isnext = update_data['isnext']
     parameter_log.info('isnext is : {:s}'.format(isnext))
-    jenkinsurl = flask.request.values.get('jenkinsurl')
-    jenkinsurl = quote(jenkinsurl, safe=";/?:@&=+$,")
+
+    jenkinsurl = update_data['jenkinsurl']
+    # jenkinsurl = quote(jenkinsurl, safe=";/?:@&=+$,")
     parameter_log.info('jenkinsurl is : {:s}'.format(jenkinsurl))
 
     upthread = MyThread(deploy.callautoupdate, [updatefile, updatemode, tomcatpath, project, isnext, jenkinsurl])

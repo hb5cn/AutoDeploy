@@ -7,6 +7,7 @@ import flask
 import shutil
 import urllib3
 import smtplib
+import datetime
 import traceback
 import threading
 import subprocess
@@ -117,10 +118,23 @@ class CompileBase(object):
             self.mainlog.info('编译成功')
             return 'build success'
         else:
+            self.mainlog.info(compile_status)
             # 如果编译失败，则发送邮件。
             self.mainlog.info('编译失败')
             self.sendemail('admin', '编译失败，编译日志请参看附件。', '编译失败', build_log)
             return 'build fail'
+
+    def makeversion(self, path):
+        ver_floder = os.path.join(path, 'version')
+        if os.path.exists(ver_floder):
+            shutil.rmtree(ver_floder)
+        os.mkdir(ver_floder)
+        self.mainlog.info('Make version file')
+        time_now = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+        ver_file = 'version_boss_{}'.format(time_now)
+        ver_f_path = os.path.join(ver_floder, ver_file)
+        f_ver = open(ver_f_path, 'w')
+        f_ver.close()
 
     def sendemail(self, mail_type, mail_text, subject, enclosure=''):
         # 读取emailname配置文件。
@@ -225,26 +239,23 @@ def compilebossandbilling():
     bossthread.start()
     billingthread = MyThread(cp_base.runant, [billingbuildpath])
     billingthread.start()
-    if 'build success' == bossthread.get_result():
+    if 'build success' == bossthread.get_result() == billingthread.get_result():
         if os.path.exists(bossreleaseto):
             shutil.rmtree(bossreleaseto)
         app_log.info('Copy boss floder.')
+        cp_base.makeversion(bossreleasesource)
         # 将编译完成的boss整个release目录拷贝到tomcat中的xtboss目录。
         shutil.copytree(bossreleasesource, bossreleaseto)
-    elif 'build fail' == bossthread.get_result():
-        pass
-    else:
-        return bossthread.get_result()
-    if 'build success' == billingthread.get_result():
+
         if os.path.exists(billingreleaseto):
             shutil.rmtree(billingreleaseto)
         app_log.info('Copy billing floder.')
+        cp_base.makeversion(billingreleasesource)
         # 将编译完成的billing整个release目录拷贝到tomcat中的xtbilling目录。
         shutil.copytree(billingreleasesource, billingreleaseto)
-    elif 'build fail' == billingthread.get_result():
-        pass
     else:
-        return billingthread.get_result()
+        return bossthread.get_result(), billingthread.get_result()
+
     if 'true' == str(isnext):
         app_log.info('Begin Call Jenkins Run autodeploy.')
         app_log.info('Jenkins Url is : %s' % str(jenkinsurl))
