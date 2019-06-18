@@ -434,6 +434,42 @@ class AutoDeploy(object):
                     self.mainlog.info('Remove : %s' % originalfilepath)
         self.mainlog.info('Remove done.')
 
+    def checkcomplete(self, svnpath):
+        version = svnpath.split('/')[-1]
+        print(version)
+        # 判断xtboss或者xtbilling文件夹是否存在
+
+        self.findrealpath(svnpath, version)
+
+    def findrealpath(self, svnpath, version):
+        cmd = 'svn list --verbose "{}"'.format(svnpath)
+        self.mainlog.info('run svn list.')
+        self.mainlog.info('svn list path is : %s' % svnpath)
+        check_p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+        check_stdout, check_stderr = check_p.communicate()
+        for line in check_stdout.decode('gbk').split('\r\n'):
+            cut_str_pattern = r'\d{2}:\d{2}\s+'
+            re_result = re.search(cut_str_pattern, line)
+            if re_result:
+                cut_str = re_result.group()
+                content = str(line).split(cut_str)[1]
+            else:
+                break
+            if content.find('/') == -1:
+                continue
+            if content.find(version) >= 0:
+                newpath = '{}/{}'.format(svnpath, version)
+                return self.findrealpath(newpath, version)
+            elif content.find('xtboss') >= 0:
+                print(svnpath)
+                return svnpath
+            elif content.find('xtbilling') >= 0:
+                print(svnpath)
+                return svnpath
+            elif content.find('WEB-INF') >= 0:
+                print(svnpath)
+                return svnpath
+
 
 # MyThread.py线程类
 class MyThread(threading.Thread):
@@ -504,6 +540,8 @@ def changeconfig_parameters():
     isupdate = config_data['isupdate']
     parameter_log.info('isupdate is : {:s}'.format(isupdate))
 
+    deploy.checkcomplete(svn_path)
+
     result = deploy.changeconfig(config_file, product_name, svn_path, boss_path, billing_path, other_path, boss_config,
                                  billing_config, other_config, boss_changed, billing_changed, other_changed)
 
@@ -553,28 +591,8 @@ def runautoupdate():
 
 @app.route('/test', methods=['GET', 'POST'])
 def test():
-    deploy.judgebossrun('F:/PythonTest/AutoDeployWithJenkins(Uincall)/catalina.out', ['xtbilling', 'xtboss'])
-    # http = urllib3.PoolManager()
-    # jenkinsurl = flask.request.values.get('jenkinsurl')
-    # jenkinsurl = quote(jenkinsurl, safe=";/?:@&=+$,")
-    # # url = 'http://10.10.16.61:9091/job/%E8%BF%90%E8%A1%8C%E8%87%AA%E5%8A%A8%E5%8C%96/build?token=runrf'
-    # a = http.request('GET', jenkinsurl)
-    # print(a.data.decode())
-    # return '2222'
-    # deploy.cleanupautoupfloder(r'F:\PythonTest\AutoDeployWithJenkins(Uincall)\auto_update_boss\auto_update_v1.9.3.sh')
+    deploy.checkcomplete('svn://svn.uincall.com:3695/project/05_发布/02_线上需求&Bug发布/01_XTBoss_201902/MsgGate_v3.0.2spc005')
     return '11111'
 
 
 app.run(host='0.0.0.0', port=40000)
-
-if __name__ == '__main__':
-    # a = AutoDeploy()
-    # a.judgetomcatrun('F:/PythonTest/AutoDeployWithJenkins(Uincall)/catalina.out')
-    # a.changeconfig('config_auto_update_v1.9.1.cfg', 'api', 'svn://123.57.180.25/dailyproduct/boss/20190514111130',
-    #                '/opt/tomcat227_8083/webapps/', '/opt/tomcat227_8083/webapps/', '',
-    #                'svn://svn.uincall.com:3695/project/04_测试/99 部门管理/01 文档管理/10 自动化项目/05 测试环境配置文件备份/'
-    #                '101.200.111.227/227-8083/227-8083-bossautodeploy-xtboss-classes',
-    #                'svn://svn.uincall.com:3695/project/04_测试/99 部门管理/01 文档管理/10 自动化项目/05 测试环境配置文件备份/'
-    #                '101.200.111.227/227-8083/227-8083-bossautodeploy-xtbilling-classes', '', 'no', 'no', 'no')
-    # a.main()
-    pass
