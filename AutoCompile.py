@@ -53,9 +53,10 @@ class CompileBase(object):
             self.sendemail('admin', email_text, '更新SVN的路径没有被找到')
             return 'update svn path is not exists : %s' % path
         self.mainlog.info('Update SVN is : %s' % path)
-        update_cmd = 'svn update "{}"'.format(path)
-        cleanup_cmd = 'svn cleanup "{}"'.format(path)
-        status_cmd = 'svn status --no-ignore "{}"'.format(path)
+        update_cmd = 'echo no | svn update --username="youyinceshi" --password="youyinceshi400" "{}"'.format(path)
+        cleanup_cmd = 'echo no | svn cleanup --username="youyinceshi" --password="youyinceshi400" "{}"'.format(path)
+        status_cmd = 'echo no | svn status --username="youyinceshi" --password="youyinceshi400" --no-ignore "{}"'.\
+            format(path)
         # status_cmd = status_cmd.encode('gbk')
         self.mainlog.info('Begin update %s' % str(path))
         # 先用svn cleanup命令清理一下目录，实际效果甚微，只能解决冲突的问题。
@@ -63,7 +64,7 @@ class CompileBase(object):
         svnlog = str(svnout.read())
         # 执行一下svn status命令，查看一下目录的所有文件及文件夹的状态。
         status_pipe = subprocess.Popen(status_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
-        status_out, status_stderr = status_pipe.communicate()
+        status_out , status_err= status_pipe.communicate()
         # 用\r\n切割成列表，将所有有异常的文件及文件夹列出来
         for line in status_out.decode('utf-8').split("\r\n"):
             try:
@@ -99,19 +100,26 @@ class CompileBase(object):
         # 使用命令调用ant编译命令
         build_pipe = subprocess.Popen(build_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
         while True:
+            up_status = 0
             nextline = build_pipe.stdout.readline().decode(encoding='utf-8')
             fp_build.write(nextline.encode('utf-8'))
-            self.mainlog.info(nextline.strip())
-            success_count = str(nextline).find('BUILD SUCCESSFUL')
-            if int(success_count) >= 0:
+            line_str = nextline.strip()
+            self.mainlog.info(line_str)
+            if line_str.find('BUILD SUCCESSFUL') >= 0:
                 compile_status = 'success'
-            if build_pipe.poll() == 0 and nextline.strip() == '':
+                up_status = 1
+            elif line_str.find('BUILD FAILED') >= 0:
+                up_status = 2
+            self.mainlog.info('up_status : {}'.format(up_status))
+            if up_status != 0:
+                self.mainlog.info('the exit code is : %s' % str(up_status))
                 # noinspection PyBroadException
                 try:
                     build_pipe.kill()
                 except Exception:
                     self.mainlog.error(traceback.format_exc())
                 break
+
         fp_build.close()
         # 判断是否编译成功
         if 'success' == compile_status:
