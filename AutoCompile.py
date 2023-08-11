@@ -64,7 +64,7 @@ class CompileBase(object):
         svnlog = str(svnout.read())
         # 执行一下svn status命令，查看一下目录的所有文件及文件夹的状态。
         status_pipe = subprocess.Popen(status_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
-        status_out , status_err= status_pipe.communicate()
+        status_out, status_err = status_pipe.communicate()
         # 用\r\n切割成列表，将所有有异常的文件及文件夹列出来
         for line in status_out.decode('utf-8').split("\r\n"):
             try:
@@ -89,7 +89,7 @@ class CompileBase(object):
         compile_status = ''
         if not os.path.exists(buildxml):
             email_text = 'ant的build文件没有被找到，SVN路径是 : {}'.format(buildxml)
-            self.sendemail('admin', email_text, 'ant的build文件没有被找到')
+            self.sendemail = self.sendemail('admin', email_text, 'ant的build文件没有被找到')
             return 'buildxml is not exists : %s' % buildxml
         build_log = '{}.log'.format(os.path.basename(buildxml))
         if os.path.exists(build_log):
